@@ -1,0 +1,146 @@
+local SoundService = game:GetService("SoundService")
+local music = SoundService:WaitForChild("Music")
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+
+local TweenService = game:GetService("TweenService")
+-- Truck Animation --
+local TruckTweenInfo_Intro = TweenInfo.new(5, Enum.EasingStyle.Circular)
+local TruckTweenInfo_Outro = TweenInfo.new(5, Enum.EasingStyle.Cubic)
+
+local TruckIntro = TweenService:Create(game.Workspace:WaitForChild("Map"):WaitForChild("TruckAnimation"):WaitForChild("Truck").PrimaryPart, TruckTweenInfo_Intro, {Position = game.Workspace:WaitForChild("Map"):WaitForChild('TruckAnimation'):WaitForChild('GameStart').Position})
+local TruckOutro = TweenService:Create(game.Workspace:WaitForChild("Map"):WaitForChild("TruckAnimation"):WaitForChild("Truck").PrimaryPart, TruckTweenInfo_Outro, {Position = game.Workspace:WaitForChild("Map"):WaitForChild('TruckAnimation'):WaitForChild('GameEnd').Position})
+
+local Machines = require(game:GetService("ServerStorage"):WaitForChild("Modules"):WaitForChild("MachinesModule"))
+local RoundStats = require(game:GetService("ServerStorage"):WaitForChild("Modules"):WaitForChild("RoundStats"))
+local FunctionsModule = require(game:GetService("ReplicatedStorage").Modules.Functions)
+
+local intermission = SoundService:WaitForChild("Intermission")
+local timerValue = game.ReplicatedStorage:WaitForChild("Game"):WaitForChild("Timer")
+local currentDay = game.ReplicatedStorage:WaitForChild("Game"):WaitForChild("CurrentDay")
+local ParcelNeeded = game.ReplicatedStorage:WaitForChild("Game"):WaitForChild("ParcelNeeded")
+local ServerMoney = game.ReplicatedStorage:WaitForChild("Game"):WaitForChild("ServerMoney")
+
+local timeLength =  10--music.TimeLength
+local timeOffset = -7
+local totalTime = timeLength + timeOffset
+
+local intermissionTimeLength = intermission.TimeLength
+local intermissionTimeOffset = -4
+local intermissionTotalTime = intermissionTimeLength + intermissionTimeOffset
+
+local gameObjectivesLeft = {}
+
+local intermissionIdle = "http://www.roblox.com/asset/?id=180435792"
+local panicIdle = "http://www.roblox.com/asset/?id=13527952200"
+
+local Needed_Parcel = 1
+local Additional_Parcel = 0
+
+--// FUNCTIONS //--
+function MachineChange(day)
+	-- Changes Machine Requirements. Ex: Number of parcel needed for crafting. --
+	for _, SelectedMachine in pairs(CollectionService:GetTagged("Machine")) do		
+		local Round = RoundStats[day]
+		
+		if not Round then return end
+		
+		for i, v in pairs(Round) do
+			if SelectedMachine:GetAttribute(i) then
+				SelectedMachine:SetAttribute(i, v)
+			end
+		end 
+		
+	end
+	
+	if RoundStats[day] then Additional_Parcel = RoundStats[day].AdditionalParcel end -- Checks additional package
+	
+end
+
+function modifyPlayers(animation)
+	local players = game.Players:GetPlayers()
+	for i, player in ipairs(players) do
+		local character = player.Character or player.CharacterAdded:Wait()
+		character.Animate.idle.Animation2.AnimationId = animation
+	end
+end
+
+function GiveMoney(TimeLeftInSeconds, ParcelNeededAmount)
+	local Equation = ((TimeLeftInSeconds / 2) * ParcelNeededAmount) + 200
+	ServerMoney.Value += Equation
+end
+
+--// MAIN //--
+local waitTime = 1
+
+while task.wait() do
+	task.wait(waitTime)
+	
+	--// Intermission //--
+	
+	for _, MACHINE in pairs(CollectionService:GetTagged("Machine")) do -- Turns off the Machines
+		if	Machines[MACHINE.Name] then Machines[MACHINE.Name](MACHINE, false) end
+	end
+    -- Removes all Pick_Up parts--
+	for _, Object in pairs(game.Workspace.SpawnedParts:GetChildren()) do Object:Destroy() end
+	
+	ParcelNeeded.Value = "0 / 0" -- Changes the parcel needed
+	
+	modifyPlayers(intermissionIdle)
+	intermission:Play()
+	
+	-- Notify that Upgrade phase is unlocked --
+	game.Workspace:WaitForChild("Map"):WaitForChild('Stations'):WaitForChild('Computer'):WaitForChild("Union"):WaitForChild("Icon").Enabled = true
+	
+	-- Animation for the Truck / TweenPosition --
+	TruckOutro:Play()
+	
+	for Count = 15, 0, -1 do -- 30
+		timerValue.Value = Count
+		
+		if Count == 13 then TruckOutro:Play() end -- Tweens Truck near the door / 28 Second
+		if Count == 8 then TruckIntro:Play() end -- Tweens Truck near the door
+		
+		task.wait(1)
+	end
+	intermission:Stop()
+	currentDay.Value += 1
+	MachineChange(currentDay.Value)
+	
+	task.wait(7)
+	
+	--// Round Start //--
+	modifyPlayers(panicIdle)
+	music:Play()
+	
+	-- Disable the Gear Icon on computer to notify upgrade phase is locked --
+	game.Workspace:WaitForChild("Map"):WaitForChild('Stations'):WaitForChild('Computer'):WaitForChild("Union"):WaitForChild("Icon").Enabled = false
+	
+	for _, MACHINE in pairs(CollectionService:GetTagged("Machine")) do
+		if	Machines[MACHINE.Name] then Machines[MACHINE.Name](MACHINE, true) end -- Turns on the Machines
+	end
+	
+	--// Change the parcel needed //--
+	local newString = string.split(ParcelNeeded.Value, " ")
+
+	local Equation = Needed_Parcel + Additional_Parcel
+	ParcelNeeded.Value = newString[1].." "..newString[2].." "..tonumber(Equation)
+	
+	--v Timer for the Round v--
+	for Count = 150, 0, -1 do -- 150
+		timerValue.Value = Count
+		
+		local newString = string.split(ParcelNeeded.Value, " ")
+		if tonumber(newString[1]) >= tonumber(newString[3]) then
+			GiveMoney(tonumber(Count), tonumber(Equation))
+			
+			break
+		end
+		
+		task.wait(1)
+	end	
+	
+	task.wait(1)
+	music:Stop()
+	
+end
