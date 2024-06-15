@@ -1,0 +1,107 @@
+--// Services //--
+local Players = game:GetService("Players")
+local RS = game:GetService("ReplicatedStorage")
+
+local previewLocation = RS:WaitForChild("clientBuilds")
+local Events = RS:WaitForChild("Events")
+
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local mouseModule = require(RS:WaitForChild("Modules"):WaitForChild("mouseModule"))
+local Mouse = mouseModule.GetMouse()
+
+--// Variable //--
+local Player = Players.LocalPlayer
+local Character = Player.Character
+local GUI = Player.PlayerGui
+local tool = script.Parent
+--Values--
+local GoodToPlace = false
+local Attachment = nil
+
+local mainFrame 
+
+local Cloned = nil
+local connection
+
+--// Functions //--
+local function guiCheck()
+	if mainFrame == nil then
+		local frame = GUI.Building.Main
+		mainFrame = frame
+	end
+	Cloned = previewLocation:WaitForChild("Floor"):Clone()
+	Cloned.Parent = game.Workspace
+	for	i, v in pairs(mainFrame:GetDescendants()) do
+		if v:IsA("TextButton") then
+			
+			v.MouseButton1Click:Connect(function()
+				if Cloned.Name == v.Name then return end
+				if Cloned ~= nil then 
+					Cloned:Destroy() 
+				end
+				Cloned = previewLocation:FindFirstChild(v.Name):Clone()
+				Cloned.Parent = game.Workspace
+			end)
+			
+		end
+	end
+end
+--// Main //--
+tool.Equipped:Connect(function()
+	if GUI.Building.Main.Visible == false then GUI.Building.Main.Visible = true end
+	guiCheck()
+	
+	connection = RunService.RenderStepped:Connect(function()
+		local Raycast = mouseModule.GetMouseRay(Mouse, Enum.RaycastFilterType.Blacklist, {Cloned, Character}, 10000)
+	
+	if Raycast and Raycast.RaycastInstance then
+		local RaycastInstance = Raycast.RaycastInstance
+		local RaycastPosition = Raycast.RaycastPosition
+		local NearestAttachment = nil
+		
+		for _, attachment in pairs(RaycastInstance:GetDescendants()) do
+			if attachment:IsA("Attachment") then
+				local AttachmentWorldPosition = attachment.WorldPosition
+				local AttachmentOrientation = attachment.Orientation
+				
+				if (Cloned.AttachmentType.Value == attachment.Name) then
+						if (Cloned.Position - AttachmentWorldPosition).Magnitude < 2 then
+						if (attachment:GetAttribute("Placed") == false and GoodToPlace ~= nil) then
+							NearestAttachment = attachment
+							Attachment = attachment
+							
+							Cloned.CFrame = CFrame.new(AttachmentWorldPosition) * CFrame.Angles(0, math.rad(AttachmentOrientation.Y), 0)
+							Cloned.Color = Color3.fromRGB(0, 255, 0)
+							GoodToPlace = true
+						end
+					end
+				end
+			end
+		end
+		
+		if NearestAttachment == nil and GoodToPlace ~= nil then
+			Cloned.CFrame = CFrame.new(RaycastPosition.X, RaycastPosition.Y + Cloned.Size.Y/2, RaycastPosition.Z)
+			Cloned.Color = Color3.fromRGB(255, 0, 0)
+			GoodToPlace = false
+		end
+	end
+	end)
+end)
+
+tool.Activated:Connect(function()
+	if GoodToPlace ~= nil and GoodToPlace then
+		if Attachment ~= nil then
+			Events:WaitForChild("CallBuild"):InvokeServer(Cloned.Name, Cloned.CFrame, Attachment)
+		end
+	end
+end)
+
+tool.Unequipped:Connect(function()
+	if GUI.Building.Main.Visible == true then GUI.Building.Main.Visible = false end
+	
+	Cloned:Destroy()
+	Cloned = nil
+	connection:Disconnect()
+end)
