@@ -1,0 +1,104 @@
+local RS = game:GetService("ReplicatedStorage")
+local SS = game:GetService("ServerStorage")
+local CollectionService = game:GetService("CollectionService")
+
+local models = SS.Models.natureparts.vegetation
+local Events = RS.Events
+local plantDictionary = require(SS.Modules.Plants.plantGrowth)
+local resourceModule = require(SS.Modules.Resources)
+--local Dictionary = require(RS.Modules.Dictionaries)
+
+local plantTime = 30
+
+local plantsTable = {}
+local tableTemplate = {
+	p_time = plantTime,
+	p_stage = 1,
+	p_model = nil,
+	p_growth = nil,
+}
+
+function stage_1(Part, Plant)
+	local newClone = models.Dirt:Clone()
+	newClone.Parent = Part
+	newClone:MoveTo(Vector3.new(Part.PrimaryPart.Position.X, 
+		Part.PrimaryPart.Position.Y + Part.PrimaryPart.Size.Y/2 + newClone.PrimaryPart.Size.Y/2, 
+		Part.PrimaryPart.Position.Z))
+	
+	local clonedTable = table.clone(tableTemplate)
+	clonedTable.p_time = plantTime
+	clonedTable.p_stage = 1
+	clonedTable.p_model = newClone
+	clonedTable.p_growth = Plant
+	table.insert(plantsTable, clonedTable)
+	
+end
+
+function stage_2(num)
+	local oldPart = plantsTable[num].p_model
+	
+	local newClone = models.Sapling:Clone()
+	newClone.Parent = oldPart.Parent
+	newClone:SetPrimaryPartCFrame(CFrame.new(oldPart.PrimaryPart.Position))
+
+	oldPart:Destroy()
+	plantsTable[num].p_time = plantTime
+	plantsTable[num].p_stage = 2
+	plantsTable[num].p_model = newClone
+	
+end
+
+function stage_3(num)
+	local oldPart = plantsTable[num].p_model
+	
+	for plantvar, growth in pairs(plantDictionary) do
+		if plantvar == plantsTable[num].p_growth then
+			for i, v in pairs(models.Parent:GetDescendants()) do
+				if v:IsA("Model") and v.Name == growth then
+					
+					local newClone = v:Clone()
+					newClone.Parent = oldPart.Parent
+					
+					newClone:SetPrimaryPartCFrame(CFrame.new(
+						oldPart.PrimaryPart.Position.X,
+						oldPart.PrimaryPart.Position.Y + oldPart.PrimaryPart.Size.Y/2 + newClone.PrimaryPart.Size.Y/2,
+						oldPart.PrimaryPart.Position.Z))
+					
+					oldPart:Destroy()
+					table.remove(plantsTable, num)
+					break
+					
+				end
+			end
+		end
+	end 
+end
+
+Events.Rescources.Planting.OnServerEvent:Connect(function(plr, casted, frame, frame_text)
+	
+	local available = resourceModule.itemCheck(plr, frame, frame_text)
+
+	if available then 
+		casted:SetAttribute("HasPlant", true)
+		stage_1(casted, frame_text)
+	end
+	
+end)
+
+while wait(1) do
+	for num, _ in pairs(plantsTable) do
+		local clock = plantsTable[num].p_time
+		local Stage = plantsTable[num].p_stage
+		
+		if clock > 0 then
+			plantsTable[num].p_time -= 1
+		end
+		
+		if clock <= 0 and Stage == 1 then
+			stage_2(num)
+		elseif clock <= 0 and Stage == 2 then
+			stage_3(num)
+		end
+	
+	end
+end
